@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import nest_asyncio
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -15,11 +16,11 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONGO_URI = os.getenv("MONGO_URI")
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")  # e.g. https://your-bot.onrender.com
 PORT = int(os.environ.get("PORT", 10000))
 
 # === Webhook Path ===
-WEBHOOK_PATH = f"{TELEGRAM_TOKEN}"
+WEBHOOK_PATH = f"/{TELEGRAM_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # === OpenAI Key ===
@@ -44,14 +45,8 @@ async def summarize_text(topic: str) -> str:
         response = openai.chat.completions.create(
             model='gpt-3.5-turbo',
             messages=[
-                {
-                    "role": "system",
-                    "content": "You're a helpful and concise JavaScript instructor. Provide a clear explanation with 2-3 examples."
-                },
-                {
-                    "role": "user",
-                    "content": f"Explain the JavaScript topic '{topic}' to a beginner. Include a short description, examples, and use cases."
-                }
+                {"role": "system", "content": "You're a helpful and concise JavaScript instructor."},
+                {"role": "user", "content": f"Explain the JavaScript topic '{topic}' to a beginner."}
             ],
             max_tokens=300
         )
@@ -79,10 +74,7 @@ async def generate_quiz(topic: str) -> tuple[str, str]:
                         "Format:\nQuestion: ...\nA. ...\nB. ...\nC. ...\nD. ...\nAnswer: A"
                     )
                 },
-                {
-                    "role": "user",
-                    "content": f"Generate a multiple choice question for the topic: {topic}"
-                }
+                {"role": "user", "content": f"Generate a multiple choice question for the topic: {topic}"}
             ],
             max_tokens=300
         )
@@ -121,10 +113,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del user_state[user_id]
         return
 
-    # New topic
     topic = text.lower()
     await update.message.reply_text(f"📘 Learning about *{topic}*...", parse_mode="Markdown")
-
     summary = await summarize_text(topic)
     await update.message.reply_text(summary, parse_mode="Markdown")
 
@@ -156,20 +146,12 @@ async def main():
         listen="0.0.0.0",
         port=PORT,
         url_path=WEBHOOK_PATH,
-        webhook_url=WEBHOOK_URL
+        webhook_url=WEBHOOK_URL,
+        stop_signals=None,  # important to avoid trying to close loop
+        close_loop=False     # this prevents RuntimeError in Python 3.13
     )
 
-    # Clean shutdown (optional, but good practice)
-    await app.shutdown()
-    await app.wait_closed()
-
-# === Event Loop Handling ===
+# === Safely Run Main in Python 3.13+ ===
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "asyncio.run() cannot be called from a running event loop" in str(e):
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(main())
-        else:
-            raise
+    nest_asyncio.apply()
+    asyncio.get_event_loop().run_until_complete(main())
