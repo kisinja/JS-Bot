@@ -15,11 +15,11 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONGO_URI = os.getenv("MONGO_URI")
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")  # e.g. https://your-bot.onrender.com
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
 PORT = int(os.environ.get("PORT", 10000))
 
 # === Webhook Path ===
-WEBHOOK_PATH = f"/{TELEGRAM_TOKEN}"
+WEBHOOK_PATH = f"{TELEGRAM_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 # === OpenAI Key ===
@@ -159,5 +159,17 @@ async def main():
         webhook_url=WEBHOOK_URL
     )
 
+    # Clean shutdown (optional, but good practice)
+    await app.shutdown()
+    await app.wait_closed()
+
+# === Event Loop Handling ===
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "asyncio.run() cannot be called from a running event loop" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main())
+        else:
+            raise
